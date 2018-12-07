@@ -1,0 +1,43 @@
+version: '3'
+services:
+  lost-angular-app:
+    image: beaussart/lost-front:latest
+    volumes:
+      - ./client.config.json:/usr/share/nginx/html/env.json
+    ports:
+      - 8090:80
+    networks:
+      - intra
+
+  lost-nestjs-server:
+    image: beaussart/lost-back:latest
+    environment:
+      - API_PORT=3030
+      - LOG_LEVEL=info
+      - DATABASE_URL=postgres://lost:mappingpasswd@lost-postgresql:5432/lost
+      - JWT_SECRET=changeToSomthingSecured
+    ports:
+      - 3030:3030
+    depends_on:
+      - lost-postgresql
+    networks:
+      - intra
+
+  lost-postgresql:
+    image: postgres:9.6.5
+    volumes:
+      - postresql_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=lost
+      - POSTGRES_PASSWORD=mappingpasswd
+    ports:
+      - 5432:5432
+    networks:
+      - intra
+
+
+networks:
+  intra:
+
+volumes:
+  postresql_data: {}

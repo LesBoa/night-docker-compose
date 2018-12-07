@@ -1,0 +1,180 @@
+version: '3'
+services:
+  lost-angular-app:
+    image: beaussart/lost-front:latest
+    ports:
+      - 8090:80
+    depends_on:
+      - proxy-traefik
+    volumes:
+      - ./client.config.prod.json:/usr/share/nginx/html/env.json
+    networks:
+      - intra
+      - web
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: Host:app.lost.docker.localhost
+
+  lost-nestjs-server:
+    image: beaussart/lost-back:latest
+    environment:
+      - API_PORT=3030
+      - LOG_LEVEL=info
+      - DATABASE_URL=postgres://lost:mappingpasswd@lost-postgresql:5432/lost
+      - JWT_SECRET=changeToSomthingSecured
+    ports:
+      - 3030:3030
+    depends_on:
+      - lost-postgresql
+      - proxy-traefik
+    networks:
+      - intra
+      - web
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: Host:api.lost.docker.localhost
+
+  lost-postgresql:
+    image: postgres:9.6.5
+    volumes:
+      - postresql_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=lost
+      - POSTGRES_PASSWORD=mappingpasswd
+    ports:
+      - 5432:5432
+    networks:
+      - intra
+    labels:
+      traefik.enable: false
+
+  proxy-traefik:
+    image: traefik
+    ports:
+      - '80:80'
+      - '443:443'
+      - '8080:8080'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/traefik.toml:/traefik.toml
+      - ./traefik/acme.json:/acme.json
+    networks:
+      - web
+      - intra
+    labels:
+      traefik.frontend.auth.basic.users: admin:$$apr1$$hJFP6Zo1$$mZqoJoCwZBrZScE5TJy9K0
+      traefik.enable: true
+      traefik.backend: traefik
+      traefik.frontend.rule: Host:traefik.docker.localhost
+      traefik.port: 8080
+
+  prometheus:
+    image: prom/prometheus:v2.1.0
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - 9090:9090
+    links:
+      - cadvisor:cadvisor
+      - alertmanager:alertmanager
+    depends_on:
+      - cadvisor
+    networks:
+      - intra
+    labels:
+      traefik.frontend.auth.basic.users: admin:$$apr1$$hJFP6Zo1$$mZqoJoCwZBrZScE5TJy9K0
+      traefik.enable: true
+      traefik.frontend.rule: Host:prometheus.docker.localhost
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - '^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)'
+    ports:
+      - 9100:9100
+    user: root
+    privileged: true
+    networks:
+      - intra
+    restart: always
+    labels:
+      traefik.frontend.auth.basic.users: admin:$$apr1$$hJFP6Zo1$$mZqoJoCwZBrZScE5TJy9K0
+      traefik.enable: true
+      traefik.frontend.rule: Host:node-exporter.docker.localhost
+
+  alertmanager:
+    image: prom/alertmanager
+    ports:
+      - 9093:9093
+    volumes:
+      - ./alertmanager/:/etc/alertmanager/
+    networks:
+      - intra
+    restart: always
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+    labels:
+      traefik.frontend.auth.basic.users: admin:$$apr1$$hJFP6Zo1$$mZqoJoCwZBrZScE5TJy9K0
+      traefik.enable: true
+      traefik.frontend.rule: Host:alertmanager.docker.localhost
+
+  cadvisor:
+    image: google/cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - 8099:8080
+    networks:
+      - intra
+    restart: always
+    labels:
+      traefik.frontend.auth.basic.users: admin:$$apr1$$hJFP6Zo1$$mZqoJoCwZBrZScE5TJy9K0
+      traefik.enable: true
+      traefik.frontend.rule: Host:cadvisor.docker.localhost
+
+  grafana:
+    image: grafana/grafana
+    user: '104'
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    env_file:
+      - ./grafana/config.monitoring
+    networks:
+      - intra
+      - web
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: Host:grafana.docker.localhost
+      traefik.port: 3000
+
+networks:
+  intra:
+  web:
+
+volumes:
+  postresql_data: {}
+  prometheus_data: {}
+  grafana_data: {}
