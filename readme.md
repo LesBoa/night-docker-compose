@@ -39,7 +39,7 @@ Et vous trouverez sur ces urls les choses suivantes :
 Pour la version complète, pour la démarer, vous devez faire : 
 
 ```bash
-docker-compose up -d
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
 et vous trouverez sur ces urls les choses suivantes : 
